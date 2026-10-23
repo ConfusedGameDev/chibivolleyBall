@@ -1,6 +1,6 @@
 import * as C from './constants';
 import { clamp, inCourt, landingPoint, planHit, solveLaunch } from './physics';
-import { rng } from './rng';
+import { Rng } from './rng';
 import { NO_INPUT, type Avatar, type Court, type Ball, type Input, type Mode, type Phase, type Side, type SimEvent, type Vec } from './types';
 
 const v3 = (x = 0, y = 0, z = 0): Vec => ({ x, y, z });
@@ -8,10 +8,22 @@ const dist = (a: Vec, b: Vec) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 const approach = (v: number, to: number, d: number) => (v < to ? Math.min(v + d, to) : Math.max(v - d, to));
 export const sideIdx = (s: Side) => (s === 1 ? 0 : 1);
 
+/** Everything needed to rebuild a World exactly (plain JSON: the server sends it, clients restore it). */
+export interface WorldState {
+  tick: number; t: number; phase: Phase; phaseT: number; server: number; nextServer: number; serveIdx: [number, number];
+  score: [number, number]; rally: number; contacts: number; best: number; mode: Mode; sets: [number, number]; setNo: number;
+  winner: Side | 0; setBreak: boolean; streak: number; bestStreak: number; rng: number; assist: boolean; court: Court;
+  avatars: Avatar[]; ball: Ball;
+}
+const KEYS = ['tick', 't', 'phase', 'phaseT', 'server', 'nextServer', 'serveIdx', 'score', 'rally', 'contacts', 'best', 'mode', 'sets', 'setNo',
+  'winner', 'setBreak', 'streak', 'bestStreak', 'assist', 'court', 'avatars', 'ball'] as const;
+const copy = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+
 export interface WorldOpts { seed?: number; assist?: boolean; teams?: [number, number]; humans?: number[]; mode?: Mode }
 
 /** Pure match simulation: no DOM, no Three.js. Same code will run on the client, in bots and on the server. */
 export class World {
+  tick = 0;
   t = 0;
   avatars: Avatar[] = [];
   ball: Ball;
@@ -28,16 +40,17 @@ export class World {
   sets: [number, number] = [0, 0];
   setNo = 1;
   winner: Side | 0 = 0;
-  private setBreak = false;
+  setBreak = false;
   streak = 0; // practice: clean returns in a row
   bestStreak = 0;
   events: SimEvent[] = [];
-  rand: () => number;
+  rng: Rng;
+  rand = () => this.rng.next();
   assist: boolean;
   court: Court;
 
   constructor(o: WorldOpts = {}) {
-    this.rand = rng(o.seed ?? 1);
+    this.rng = new Rng(o.seed ?? 1);
     this.assist = o.assist ?? true;
     this.mode = o.mode ?? 'match';
     const [a, b] = o.teams ?? (this.mode === 'practice' ? [1, 0] : [1, 1]), humans = o.humans ?? [0];
@@ -98,8 +111,23 @@ export class World {
     b.p = v3((this.rand() * 2 - 1) * (this.court.hw - 0.6), 2, -this.court.len + 0.4);
   }
 
+  snapshot(): WorldState {
+    const o = {} as Record<string, unknown>;
+    for (const k of KEYS) o[k] = copy(this[k]);
+    return { ...(o as Omit<WorldState, 'rng'>), rng: this.rng.s };
+  }
+
+  /** Restores a snapshot in place (keeps this object, so views holding it stay valid). Clears pending events. */
+  load(s: WorldState) {
+    const self = this as unknown as Record<string, unknown>;
+    for (const k of KEYS) self[k] = copy(s[k]);
+    this.rng.s = s.rng; this.events.length = 0;
+  }
+
+  static from(s: WorldState): World { const w = new World({ teams: [1, 1] }); w.load(s); return w; }
+
   step(inputs: Input[]) {
-    this.t += C.DT; this.phaseT += C.DT;
+    this.tick++; this.t += C.DT; this.phaseT += C.DT;
     for (const a of this.avatars) this.stepAvatar(a, inputs[a.id] ?? NO_INPUT);
     const b = this.ball;
     if (this.phase === 'serve' && b.held && this.mode === 'practice') {

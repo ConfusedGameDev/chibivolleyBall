@@ -15,6 +15,9 @@
       <div id="dots"><i></i><i></i><i></i></div>
     </div>
     <div id="rally">rally 0 · best 0</div>
+    <div id="ping"></div>
+    <div id="tags"></div>
+    <div id="toast"></div>
     <div id="bubble">x2</div>
     <div id="btns">
       <button id="bPause" title="Pause (Esc)">pause</button>
@@ -39,21 +42,45 @@
   <div id="menu" class="ov">
     <div class="card">
       <h1>Chibi Volley</h1>
-      <p class="sub">M2 preview · teams and couch play</p>
+      <p class="sub">M3 preview · online</p>
       <div class="chips" id="size"><button data-s="1">1v1</button><button data-s="2">2v2</button><button data-s="3">3v3</button></div>
       <button class="big" data-a="solo">Play vs CPU</button>
       <div class="chips" id="lvl"><button data-l="easy">easy</button><button data-l="normal">normal</button><button data-l="hard">hard</button></div>
       <div class="pair"><button class="mid" data-a="versus">2P versus</button><button class="mid" data-a="coop">2P co-op</button></div>
+      <button class="mid on-btn" data-a="online">Online</button>
       <button class="mid" data-a="practice">Practice</button>
       <p class="help"><b>Jump</b> near the ball to push it up. <b>Hold hit</b> to charge, <b>release</b> when the ball is at your hands to send it over. More charge = faster and deeper; charge it in the air near the net to spike. Sets to 7, win by 2, best of 3.<br>
         <b>2 players</b>: P1 = WASD, Space, J · P2 = arrows, Right Ctrl or /, Right Shift or . · gamepads work for both. In teams you control whoever is under the ball.</p>
+    </div>
+  </div>
+  <div id="online" class="ov hide">
+    <div class="card">
+      <h2>Online</h2>
+      <input id="name" maxlength="12" placeholder="your name" autocomplete="nickname" />
+      <div class="chips"><button data-s="1">1v1</button><button data-s="2">2v2</button><button data-s="3">3v3</button></div>
+      <button class="big" data-a="quick">Quick match</button>
+      <button class="mid" data-a="create">Create room</button>
+      <div class="pair"><input id="code" maxlength="4" placeholder="CODE" autocapitalize="characters" /><button class="mid" data-a="join">Join</button></div>
+      <p class="sub" id="netStatus"></p>
+      <button class="mid" data-a="menu">Back</button>
+    </div>
+  </div>
+  <div id="lobby" class="ov hide">
+    <div class="card">
+      <h2>Room <span id="lobbyCode"></span></h2>
+      <p class="sub" id="lobbyInfo"></p>
+      <div class="teams"><div class="tcol"><b class="home">green</b><ul id="teamA"></ul></div><div class="tcol"><b class="away">pink</b><ul id="teamB"></ul></div></div>
+      <div class="chips" id="lsize"><button data-ls="1">1v1</button><button data-ls="2">2v2</button><button data-ls="3">3v3</button></div>
+      <div class="pair"><button class="mid" data-a="team">Switch team</button><button class="mid" data-a="invite">Copy invite</button></div>
+      <button class="big" data-a="startOnline" id="bStart">Start</button>
+      <button class="mid" data-a="menu">Leave</button>
     </div>
   </div>
   <div id="pause" class="ov hide">
     <div class="card">
       <h2>Paused</h2>
       <button class="big" data-a="resume">Resume</button>
-      <button class="mid" data-a="restart">Restart</button>
+      <button class="mid local" data-a="restart">Restart</button>
       <button class="mid" data-a="menu">Menu</button>
     </div>
   </div>

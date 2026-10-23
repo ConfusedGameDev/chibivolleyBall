@@ -4,11 +4,11 @@ Guidance for Claude Code when working in this repository.
 
 ## Overview
 
-Chibi Volley: arcade 3D volleyball (Three.js + TypeScript + Vite), web first, Capacitor for iOS/Android later. Currently M2: 1v1/2v2/3v3 vs CPU, 2P couch versus and co-op, Practice (ball launcher). Live at https://chibivolleyball.vercel.app (Vercel project `chibivolleyball`, production = `main`, previews for other branches). The PRD and milestone plan live in a shared doc; milestones are M0 feel prototype → M1 local 1v1 rules/sets → M2 teams + couch → M3 online (authoritative server, Colyseus) → M4 polish + store builds.
+Chibi Volley: arcade 3D volleyball (Three.js + TypeScript + Vite), web first, Capacitor for iOS/Android later. Currently M3: online (Fly.io match server), 1v1/2v2/3v3 vs CPU, 2P couch versus and co-op, Practice (ball launcher). Live at https://chibivolleyball.vercel.app (Vercel project `chibivolleyball`, production = `main`, previews for other branches). The PRD and milestone plan live in a shared doc; milestones are M0 feel prototype → M1 local 1v1 rules/sets → M2 teams + couch → M3 online (authoritative server, Colyseus) → M4 polish + store builds.
 
 ## Commands
 
-- `npm run dev` (Vite, `--host` for phone testing), `npm test` (vitest, sim only), `npm run build` (tsc + vite build), `npm run typecheck`
+- `npm run dev` (Vite, `--host` for phone testing), `npm run server` (local match server, ws://localhost:8787), `npm test` (vitest, sim only), `npm run build` (tsc + vite build), `npm run typecheck`
 - URL flags: `?play=solo|versus|coop|practice` (skip the menu), `?bot=easy|normal|hard`
 
 ## Architecture
@@ -20,13 +20,18 @@ Chibi Volley: arcade 3D volleyball (Three.js + TypeScript + Vite), web first, Ca
   - `physics.ts` ballistic helpers; `planHit` picks target and flight time from charge and clamps until the ball clears the net.
   - `bot.ts` produces the same `Input` a human does (move, hold hit, release in reach); difficulty in `LEVELS`. In teams the teammate closest to the contact point chases; early touches are pushes toward the teammate nearest the net (dig low at `DIG_H`, set at `PUSH_H`), the last is a hit or a jump spike; the rest hold formation (`spot`). Jumping while charging never pushes (spike approach).
   - `team.ts` `pickControl()` auto-switch: a human's control moves to the teammate clearly closer to the incoming ball.
+- Online (same design as Super Tennis Deluxo's M6):
+  - `server/room.ts` is the whole server game logic (lobby with up to 6 seats and team switching, quick-match auto start, 60 Hz authoritative `World.step`, server-side bots for empty or dropped seats, auto-switch per seat, 20 Hz snapshots, rematch votes, 60 s rejoin). It takes time and send functions as parameters so `src/net/net.test.ts` drives it over a fake laggy network. `server/index.ts` is HTTP `/health` + WebSocket plumbing. The server imports `src/sim` and `src/net/protocol.ts` directly (run with tsx; `server/Dockerfile` copies them). If the server starts importing another `src/` file, add it to the Dockerfile.
+  - `src/net/protocol.ts` (messages, `mergeDue`: the one rule both sides use to apply inputs to ticks), `src/net/session.ts` (prediction + reconciliation; every other avatar repeats its last confirmed input; runs one RTT + 3 ticks ahead), `src/net/client.ts` (WebSocket, ping, rejoin).
+  - `World.snapshot()` / `load()` / `World.from()` make the world exactly restorable; bots use their own `Rng`, never the world's, so a client predicting without bots stays in step.
+  - Fly app `chibi-volley-match` (fly.toml, region dfw, one always-on machine), deployed by `.github/workflows/fly.yml` when `FLY_API_TOKEN` is set.
 - `src/render/`: Three.js views of sim state only (`chibi.ts` primitive + GLB avatars, `pet.ts` cube-pet ball, `markers.ts` landing ring/drop line/shadows/charge arc/trail, `fx.ts` particles + comic words, `camera.ts`, `court.ts`, `toon.ts`).
 - `src/input/controls.ts` `read(slot, two)` maps keyboard/mouse/touch/gamepads to player slots in screen space.
 - `src/render/camera.ts` modes `follow` / `broadcast` / `side` (versus), sized to the court.
 - `src/main.ts` boot, `newGame(kind)` (`demo` bot-vs-bot behind the menu, `solo`, `versus`, `coop`, `practice`; team size from settings) with `players` (input slot + controlled avatar + auto-switch); every avatar has a `Bot`, humans override theirs; human stick input is screen-space and goes through `rig.toWorld()`; UI state `menu`/`play`/`paused`/`over` with overlays `#menu`/`#pause`/`#over` (buttons use `data-a` actions, difficulty chips `data-l`), fixed-timestep loop, event → sfx/fx mapping; settings persist in `chibivolley.settings`; `src/ui/hud.ts` DOM HUD; `src/audio.ts` Web Audio synth (no files).
 - Models: `public/models/manifest.json` lists GLBs (Kenney Mini Characters, Cube Pets); empty = primitive stand-ins.
 
-Debug hook for browser checks: `window.__cv` (`world`, `state`, `kind`, `phase`, `score`, `sets`, `rally`, `best`, `streak`, `ball`, `me`, `clips`, `models`, `players`, `court`, `cam`, `act(action)`).
+Debug hook for browser checks: `window.__cv` (`world`, `state`, `kind`, `phase`, `score`, `sets`, `rally`, `best`, `streak`, `ball`, `me`, `clips`, `models`, `players`, `court`, `cam`, `online`, `act(action)`). URL flags for online: `?server=ws://...`, `?lag=100`, `?room=CODE`.
 
 ## Conventions
 

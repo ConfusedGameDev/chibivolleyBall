@@ -1,0 +1,34 @@
+# Deploys the match server to Fly.io when the server or the shared sim changes on main.
+# One-time setup: create a Fly token (`fly tokens create org`) and add it as the repo secret FLY_API_TOKEN.
+name: Deploy match server
+on:
+  push:
+    branches: [main]
+    paths: ['server/**', 'src/sim/**', 'src/net/protocol.ts', 'fly.toml', 'package.json', 'package-lock.json', '.github/workflows/fly.yml']
+  workflow_dispatch:
+concurrency: fly-deploy
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Skip when no token is configured
+        id: gate
+        run: |
+          if [ -z "$FLY_API_TOKEN" ]; then echo "::warning::FLY_API_TOKEN is not set; skipping the Fly deploy"; echo "go=no" >> "$GITHUB_OUTPUT"; else echo "go=yes" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.go == 'yes'
+        with: { node-version: 22, cache: npm }
+      - name: Test the sim and the server room
+        if: steps.gate.outputs.go == 'yes'
+        run: npm ci && npm test
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+        if: steps.gate.outputs.go == 'yes'
+      - name: Create the app on first deploy
+        if: steps.gate.outputs.go == 'yes'
+        run: flyctl status --app chibi-volley-match >/dev/null 2>&1 || flyctl apps create chibi-volley-match
+      - name: Deploy
+        if: steps.gate.outputs.go == 'yes'
+        run: flyctl deploy --remote-only
