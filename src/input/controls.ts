@@ -14,6 +14,7 @@ export class Controls {
   touchUsed = false;
   onCamera = () => {};
   onAssist = () => {};
+  onPause = () => {};
   onAny = () => {};
 
   constructor(canvas: HTMLCanvasElement, ui: { zone: HTMLElement; knob: HTMLElement; base: HTMLElement; jump: HTMLElement; hit: HTMLElement }) {
@@ -72,6 +73,7 @@ export class Controls {
       const b = (i: number) => !!pad.buttons[i]?.pressed;
       jump ||= b(0); hit ||= b(2) || b(7) || b(5);
       if (b(3) && !this.padPrev[3]) this.onCamera();
+      if (b(9) && !this.padPrev[9]) this.onPause();
       if (pad.buttons.some(x => x.pressed)) this.onAny();
       this.padPrev = pad.buttons.map(x => x.pressed);
     }

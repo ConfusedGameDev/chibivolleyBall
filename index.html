@@ -17,6 +17,7 @@
     <div id="rally">rally 0 · best 0</div>
     <div id="bubble">x2</div>
     <div id="btns">
+      <button id="bPause" title="Pause (Esc)">pause</button>
       <button id="bCam" title="Camera (C)">cam</button>
       <button id="bAssist" title="Assist (P)">assist on</button>
       <button id="bMute" title="Sound">sound</button>
@@ -25,7 +26,7 @@
       <div><kbd>WASD</kbd> move</div>
       <div><kbd>Space</kbd> jump / push</div>
       <div><kbd>J</kbd> or <kbd>click</kbd> hold to charge, release to hit</div>
-      <div><kbd>C</kbd> camera · <kbd>P</kbd> assist</div>
+      <div><kbd>C</kbd> camera · <kbd>P</kbd> assist · <kbd>Esc</kbd> pause</div>
     </div>
   </div>
   <div id="touch">
@@ -34,12 +35,30 @@
     <div id="bJump" class="tbtn">jump</div>
     <div id="bHit" class="tbtn">hit</div>
   </div>
-  <div id="start">
+  <div id="menu" class="ov">
     <div class="card">
       <h1>Chibi Volley</h1>
-      <p class="sub">M0 feel prototype · 1v1 vs CPU</p>
-      <p><b>Jump</b> near the ball to push it up. <b>Hold hit</b> to charge, <b>release</b> when the ball is at your hands to send it over. More charge = faster and deeper; charge it in the air near the net to spike.</p>
-      <p class="go">Tap or press any key</p>
+      <p class="sub">M1 preview · 1v1 vs CPU</p>
+      <button class="big" data-a="match">Play vs CPU</button>
+      <div class="chips" id="lvl"><button data-l="easy">easy</button><button data-l="normal">normal</button><button data-l="hard">hard</button></div>
+      <button class="mid" data-a="practice">Practice</button>
+      <p class="help"><b>Jump</b> near the ball to push it up. <b>Hold hit</b> to charge, <b>release</b> when the ball is at your hands to send it over. More charge = faster and deeper; charge it in the air near the net to spike. Sets to 7, win by 2, best of 3.</p>
+    </div>
+  </div>
+  <div id="pause" class="ov hide">
+    <div class="card">
+      <h2>Paused</h2>
+      <button class="big" data-a="resume">Resume</button>
+      <button class="mid" data-a="restart">Restart</button>
+      <button class="mid" data-a="menu">Menu</button>
+    </div>
+  </div>
+  <div id="over" class="ov hide">
+    <div class="card">
+      <h2 id="overTitle">You win!</h2>
+      <p class="sub" id="overSub"></p>
+      <button class="big" data-a="restart">Rematch</button>
+      <button class="mid" data-a="menu">Menu</button>
     </div>
   </div>
   <script type="module" src="/src/main.ts"></script>

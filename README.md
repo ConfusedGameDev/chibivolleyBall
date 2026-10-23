@@ -4,7 +4,9 @@ Arcade 3D volleyball with chibi avatars, built with Three.js for the web and (la
 
 Two verbs carry the game: **jump** near the ball to push it up, **hold hit** to charge and **release** in reach to send it over. More charge = faster, flatter, deeper; a charged hit in the air near the net is a spike.
 
-Status: **M0 feel prototype**, 1v1 against a CPU on one device. See the PRD / plan for milestones M1–M4 (rules and sets, teams and couch play, online, ship).
+Status: **M1**: 1v1 against a CPU (easy / normal / hard) with sets to 7, win by 2 (cap 11), best of 3, plus a Practice mode with a ball launcher. Next milestones: M2 teams and couch play, M3 online, M4 polish and store builds.
+
+Play it: https://chibivolleyball.vercel.app
 
 ## Run
 
@@ -15,7 +17,7 @@ npm test           # sim unit tests (vitest)
 npm run build      # typecheck + production build into dist/
 ```
 
-URL flags: `?demo` (bots on both sides), `?bot=easy|normal|hard`.
+URL flags: `?play=match|practice` (skip the menu), `?bot=easy|normal|hard`.
 
 ## Controls
 
@@ -26,6 +28,7 @@ URL flags: `?demo` (bots on both sides), `?bot=easy|normal|hard`.
 | Hit (hold, release) | J or left mouse | hit button | X / RT |
 | Camera preset | C | cam button | Y |
 | Assist on/off | P | assist button | |
+| Pause | Esc | pause button | Start |
 
 ## Models
 
