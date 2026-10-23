@@ -17,13 +17,16 @@ export class Hud {
   private rally = $('rally');
   private last = '';
   private tmp = new THREE.Vector3();
+  private n: [string, string] = ['you', 'cpu'];
+
+  names(a: string, b: string) { this.n = [a, b]; this.last = ''; }
 
   update(w: World, cam: THREE.Camera, width: number, height: number) {
     const b = w.ball, key = `${w.mode}|${w.score}|${w.sets}|${b.touches}|${b.touchSide}|${w.rally}|${w.best}|${w.phase}|${w.streak}`;
     if (key !== this.last) {
       this.last = key;
       this.s0.textContent = String(w.score[0]); this.s1.textContent = String(w.score[1]);
-      this.home.textContent = `you ${pips(w.sets[0])}`; this.away.textContent = `${pips(w.sets[1])} cpu`;
+      this.home.textContent = `${this.n[0]} ${pips(w.sets[0])}`; this.away.textContent = `${pips(w.sets[1])} ${this.n[1]}`;
       this.dots.forEach((d, i) => { d.style.background = i < b.touches && w.phase !== 'serve' ? TEAM_CSS[b.touchSide] : ''; });
       this.rally.textContent = w.mode === 'practice'
         ? `streak ${w.streak} · best ${w.bestStreak}`

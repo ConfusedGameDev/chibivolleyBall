@@ -3,7 +3,7 @@ import './ui/style.css';
 import { audioInit, buzz, muted, sfx, toggleMute } from './audio';
 import { Controls } from './input/controls';
 import { loadAssets } from './render/assets';
-import { CamRig } from './render/camera';
+import { CamRig, type CamMode } from './render/camera';
 import { GlbChibi, PrimitiveChibi, type AvatarView } from './render/chibi';
 import { buildCourt } from './render/court';
 import { Fx } from './render/fx';
@@ -12,18 +12,23 @@ import { PetBall } from './render/pet';
 import { outline, toon } from './render/toon';
 import { Bot, LEVELS } from './sim/bot';
 import { BALL_R, DT } from './sim/constants';
-import type { Input, SimEvent } from './sim/types';
+import { pickControl } from './sim/team';
+import type { Avatar, Input, SimEvent } from './sim/types';
 import { World } from './sim/world';
 import { Hud } from './ui/hud';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const q = new URLSearchParams(location.search);
 type Level = keyof typeof LEVELS;
-type Kind = 'demo' | 'match' | 'practice';
+type Kind = 'demo' | 'solo' | 'versus' | 'coop' | 'practice';
+type Size = 1 | 2 | 3;
+/** A human at this screen: input slot (0 = P1, 1 = P2), the avatar they control, and whether control follows the ball. */
+interface Player { slot: number; id: number; auto: boolean }
+const RING = [0x64a9e8, 0xff9a3c];
 type State = 'menu' | 'play' | 'paused' | 'over';
 
 /* ---------- settings ---------- */
-const settings = { level: 'normal' as Level, assist: true, cam: 0 as 0 | 1 };
+const settings = { level: 'normal' as Level, assist: true, cam: 0 as 0 | 1, size: 1 as Size };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('chibivolley.settings') ?? '{}')); } catch { /* storage blocked */ }
 const qb = q.get('bot');
 if (qb && qb in LEVELS) settings.level = qb as Level;
@@ -38,10 +43,10 @@ scene.background = new THREE.Color(0xeef0f7);
 scene.fog = new THREE.Fog(0xeef0f7, 22, 55);
 scene.add(new THREE.HemisphereLight(0xffffff, 0xc4c9de, 1.7));
 const sun = new THREE.DirectionalLight(0xffffff, 1.5); sun.position.set(4, 10, 6); scene.add(sun);
-scene.add(buildCourt());
+let courtMesh = buildCourt({ hw: 2.5, len: 5 });
+scene.add(courtMesh);
 
 const rig = new CamRig();
-rig.mode = settings.cam;
 const fx = new Fx($('fx'));
 const hud = new Hud();
 scene.add(fx.mesh);
@@ -52,22 +57,36 @@ const assets = await loadAssets();
 
 /* ---------- game (re)construction ---------- */
 let state: State = 'menu', kind: Kind = 'demo';
-let world: World, bots: Bot[] = [], views: AvatarView[] = [], markers: Markers | null = null, ball: PetBall | null = null;
+let world: World, bots: Bot[] = [], views: AvatarView[] = [], markers: Markers | null = null, ball: PetBall | null = null, players: Player[] = [];
+const camModes = (): CamMode[] => (kind === 'versus' ? ['side', 'broadcast'] : ['follow', 'broadcast']);
 
 function newGame(k: Kind) {
   kind = k;
   for (const v of views) scene.remove(v.root);
   if (markers) scene.remove(markers.group);
   if (ball) scene.remove(ball.root);
-  world = new World({ seed: (Date.now() % 1e6) | 0, mode: k === 'practice' ? 'practice' : 'match', humans: k === 'demo' ? [] : [0], assist: settings.assist });
-  bots = world.avatars.filter(a => a.bot).map(a => new Bot(a.id, world, k === 'demo' ? LEVELS.normal : LEVELS[settings.level]));
+  const n = k === 'practice' ? 1 : k === 'demo' ? 2 : k === 'coop' ? Math.max(2, settings.size) : settings.size;
+  players = k === 'solo' ? [{ slot: 0, id: 0, auto: n > 1 }]
+    : k === 'versus' ? [{ slot: 0, id: 0, auto: n > 1 }, { slot: 1, id: n, auto: n > 1 }]
+    : k === 'coop' ? [{ slot: 0, id: 0, auto: false }, { slot: 1, id: 1, auto: false }]
+    : k === 'practice' ? [{ slot: 0, id: 0, auto: false }] : [];
+  world = new World({ seed: (Date.now() % 1e6) | 0, mode: k === 'practice' ? 'practice' : 'match', teams: k === 'practice' ? [1, 0] : [n, n], humans: players.map(p => p.id), assist: settings.assist });
+  // every avatar gets a bot so control can move between teammates; CPU opponents use the chosen difficulty, teammates play at normal
+  bots = world.avatars.map(a => new Bot(a.id, world, (k === 'solo' || k === 'coop') && a.side === -1 ? LEVELS[settings.level] : LEVELS.normal));
   views = world.avatars.map((a, i) => assets.characters.length ? new GlbChibi(assets.characters[(i * 5) % assets.characters.length], a) : new PrimitiveChibi(a));
   views.forEach(v => scene.add(v.root));
-  markers = new Markers(world.avatars.length);
+  scene.remove(courtMesh); courtMesh = buildCourt(world.court); scene.add(courtMesh);
+  markers = new Markers(world.avatars.length, players.map(p => RING[p.slot]));
   ball = new PetBall(assets.pets.length ? assets.pets[Math.floor(Math.random() * assets.pets.length)] : undefined);
   scene.add(markers.group, ball.root);
+  rig.mode = k === 'versus' ? 'side' : settings.cam ? 'broadcast' : 'follow';
+  const [na, nb] = k === 'versus' ? ['P1', 'P2'] : k === 'coop' ? ['P1+P2', 'cpu'] : ['you', 'cpu'];
+  hud.names(na, nb);
   document.body.classList.toggle('practice', k === 'practice');
+  document.body.classList.toggle('two', k === 'versus' || k === 'coop');
 }
+const humans = (): Avatar[] => players.map(p => world.avatars[p.id]);
+const isHuman = (id: number) => players.some(p => p.id === id);
 
 /* ---------- overlays ---------- */
 const panels = { menu: $('menu'), pause: $('pause'), over: $('over') };
@@ -81,21 +100,23 @@ function setState(s: State) {
 function play(k: Kind) { audioInit(); newGame(k); acc = 0; setState('play'); }
 function showOver() {
   const won = world.winner === 1;
-  $('overTitle').textContent = won ? 'You win!' : 'CPU wins';
-  $('overSub').textContent = `sets ${world.sets[0]}–${world.sets[1]} · best rally ${world.best} · cpu ${settings.level}`;
+  $('overTitle').textContent = kind === 'versus' ? (won ? 'P1 wins!' : 'P2 wins!') : won ? (kind === 'coop' ? 'You both win!' : 'You win!') : 'CPU wins';
+  $('overSub').textContent = `sets ${world.sets[0]}–${world.sets[1]} · best rally ${world.best}` + (kind === 'versus' ? '' : ` · cpu ${settings.level}`);
   setState('over');
 }
 function act(a: string) {
   audioInit();
-  if (a === 'match' || a === 'practice') play(a);
+  if (a === 'solo' || a === 'versus' || a === 'coop' || a === 'practice') play(a);
   else if (a === 'resume') setState('play');
   else if (a === 'restart') { world.restart(); acc = 0; setState('play'); }
   else if (a === 'menu') { newGame('demo'); setState('menu'); }
 }
 document.addEventListener('click', e => {
-  const t = (e.target as HTMLElement).closest<HTMLElement>('[data-a],[data-l]');
+  const t = (e.target as HTMLElement).closest<HTMLElement>('[data-a],[data-l],[data-s]');
   if (!t) return;
-  if (t.dataset.l) { settings.level = t.dataset.l as Level; save(); syncBtns(); } else act(t.dataset.a!);
+  if (t.dataset.l) { settings.level = t.dataset.l as Level; save(); syncBtns(); }
+  else if (t.dataset.s) { settings.size = Number(t.dataset.s) as Size; save(); syncBtns(); }
+  else act(t.dataset.a!);
 });
 
 /* ---------- input / buttons ---------- */
@@ -108,8 +129,12 @@ function syncBtns() {
   assistBtn.textContent = settings.assist ? 'assist on' : 'assist off';
   muteBtn.textContent = muted ? 'muted' : 'sound';
   document.querySelectorAll<HTMLElement>('#lvl button').forEach(b => b.classList.toggle('on', b.dataset.l === settings.level));
+  document.querySelectorAll<HTMLElement>('#size button').forEach(b => b.classList.toggle('on', Number(b.dataset.s) === settings.size));
 }
-const toggleCam = () => { rig.toggle(); settings.cam = rig.mode; save(); };
+const toggleCam = () => {
+  const m = camModes(); rig.mode = m[(m.indexOf(rig.mode) + 1) % m.length];
+  if (kind !== 'versus') { settings.cam = rig.mode === 'broadcast' ? 1 : 0; save(); }
+};
 const toggleAssist = () => { settings.assist = world.assist = !settings.assist; save(); syncBtns(); };
 const togglePause = () => { if (state === 'play') setState('paused'); else if (state === 'paused') setState('play'); };
 controls.onCamera = toggleCam;
@@ -121,7 +146,7 @@ muteBtn.addEventListener('click', () => { toggleMute(); syncBtns(); });
 $('bPause').addEventListener('click', togglePause);
 addEventListener('keydown', e => {
   if (e.code === 'Escape') togglePause();
-  if (e.code === 'Enter' && state === 'menu') act('match');
+  if (e.code === 'Enter' && state === 'menu') act('solo');
   if (e.code === 'Enter' && state === 'over') act('restart');
 });
 document.addEventListener('visibilitychange', () => { if (document.hidden && state === 'play') setState('paused'); last = performance.now(); acc = 0; });
@@ -130,7 +155,7 @@ syncBtns();
 /* ---------- events → juice ---------- */
 let hitstop = 0, overT = -1;
 function onEvent(e: SimEvent) {
-  const me = world.avatars[0], mine = 'id' in e && e.id === me.id, p = world.ball.p;
+  const mine = 'id' in e && isHuman(e.id), p = world.ball.p, vs = kind === 'versus', me = { side: 1 };
   switch (e.t) {
     case 'jump': if (mine) sfx.jump(); break;
     case 'push':
@@ -150,14 +175,15 @@ function onEvent(e: SimEvent) {
     case 'net': sfx.net(); fx.word('Net!', e.p, 'bad'); break;
     case 'bounce': sfx.bounce(e.v); fx.burst(e.p, 4, 0xd9dcea, 1.2, 1.4); break;
     case 'point': {
-      const win = e.side === me.side;
+      const win = e.side === me.side || vs, why = e.why === 'touches' ? '4 touches' : e.why === 'out' ? 'Out!' : '';
       sfx.point(win);
-      fx.word(win ? (world.rally >= 6 ? 'Nice!' : 'Point!') : e.why === 'touches' ? '4 touches' : e.why === 'out' ? 'Out!' : 'Miss…', p, win ? 'good' : 'bad');
+      if (vs) fx.word(`${e.side === 1 ? 'P1' : 'P2'} point${why ? ' · ' + why : '!'}`, p, e.side === 1 ? 'good' : 'bad');
+      else fx.word(win ? (world.rally >= 6 ? 'Nice!' : 'Point!') : why || 'Miss…', p, win ? 'good' : 'bad');
       if (!win) rig.shake(0.15);
       break;
     }
-    case 'set': fx.word(e.side === me.side ? 'SET!' : 'Set lost', { ...p, y: p.y + 0.6 }, 'big'); sfx.perfect(); break;
-    case 'match': fx.word(e.side === me.side ? 'YOU WIN!' : 'CPU WINS', { ...p, y: p.y + 0.6 }, 'big'); overT = 1.6; break;
+    case 'set': fx.word(vs ? `${e.side === 1 ? 'P1' : 'P2'} takes the set` : e.side === me.side ? 'SET!' : 'Set lost', { ...p, y: p.y + 0.6 }, 'big'); sfx.perfect(); break;
+    case 'match': fx.word(vs ? `${e.side === 1 ? 'P1' : 'P2'} WINS!` : e.side === me.side ? 'YOU WIN!' : 'CPU WINS', { ...p, y: p.y + 0.6 }, 'big'); overT = 1.6; break;
     case 'drill':
       if (e.ok) { sfx.point(true); fx.word(e.streak >= 3 ? `x${e.streak}!` : 'Nice!', p, 'good'); }
       else { sfx.point(false); fx.word('Miss…', p, 'bad'); }
@@ -182,8 +208,17 @@ function frame(now: number) {
       let n = 0;
       while (acc >= DT && n < 6) {
         const inputs: Input[] = [];
-        if (kind !== 'demo') inputs[0] = state === 'play' ? controls.read() : { mx: 0, mz: 0, jump: false, hit: false };
-        for (const b of bots) inputs[b.id] = b.input();
+        for (const p of players) {
+          if (!p.auto) continue;
+          const cur = world.avatars[p.id], nxt = pickControl(world, cur, new Set(players.filter(o => o !== p).map(o => o.id)));
+          if (nxt !== cur) { cur.bot = true; nxt.bot = false; p.id = nxt.id; }
+        }
+        const two = players.length > 1;
+        for (const p of players) {
+          const r = state === 'play' ? controls.read(p.slot, two) : { mx: 0, mz: 0, jump: false, hit: false }, [mx, mz] = rig.toWorld(r.mx, r.mz);
+          inputs[p.id] = { ...r, mx, mz };
+        }
+        for (const b of bots) if (!isHuman(b.id)) inputs[b.id] = b.input();
         world.step(inputs);
         for (const e of world.events) if (kind !== 'demo') onEvent(e);
         world.events.length = 0;
@@ -194,14 +229,14 @@ function frame(now: number) {
     }
   }
   if (overT > 0 && (overT -= dt) <= 0 && state === 'play') showOver();
-  const me = world.avatars[0];
+  const hs = humans(), focus = hs.length ? { x: hs.reduce((s, a) => s + a.p.x, 0) / hs.length, y: 0, z: hs.reduce((s, a) => s + a.p.z, 0) / hs.length } : world.avatars[0].p;
   world.avatars.forEach((a, i) => views[i].update(a, dt));
   ball!.update(world.ball, dt);
   const wb = world.ball;
   launcher.visible = world.mode === 'practice' && wb.held;
   if (launcher.visible) { const h = wb.p.y - BALL_R * 1.1; launcher.scale.set(1, h, 1); launcher.position.set(wb.p.x, h / 2, wb.p.z); }
-  markers!.update(world, me, rig.cam, dt);
-  rig.update(me, world.ball.p, dt, W / H);
+  markers!.update(world, hs, rig.cam, dt);
+  rig.update(focus, world.ball.p, world.court, dt, W / H);
   fx.update(dt, rig.cam, W, H);
   hud.update(world, rig.cam, W, H);
   renderer.render(scene, rig.cam);
@@ -211,7 +246,7 @@ function frame(now: number) {
 newGame('demo');
 setState('menu');
 if (q.has('demo')) setState('menu');
-else if (q.get('play') === 'practice' || q.get('play') === 'match') play(q.get('play') as Kind);
+else if (['solo', 'versus', 'coop', 'practice'].includes(q.get('play') ?? '')) play(q.get('play') as Kind);
 requestAnimationFrame(frame);
 
 /* ---------- debug hook for automated checks ---------- */
@@ -226,7 +261,10 @@ requestAnimationFrame(frame);
   get best() { return world.best; },
   get streak() { return world.streak; },
   get ball() { return { ...world.ball.p }; },
-  get me() { const a = world.avatars[0]; return { ...a.p, charging: a.charging, charge: a.charge }; },
+  get me() { const a = world.avatars[players[0]?.id ?? 0]; return { id: a.id, ...a.p, charging: a.charging, charge: a.charge }; },
+  get players() { return players.map(p => ({ ...p })); },
+  get court() { return { ...world.court }; },
+  get cam() { return rig.mode; },
   get clips() { return { characters: views.map(v => v.clips ?? null), pet: ball!.clips }; },
   get models() { return { characters: assets.characters.length, pets: assets.pets.length }; },
   act,

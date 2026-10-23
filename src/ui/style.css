@@ -52,8 +52,20 @@ body.touch #legend { display: none; }
 .ov .big { font-size: 22px; padding: 12px 28px; background: var(--home); color: #fff; width: 100%; }
 .ov .mid { font-size: 17px; padding: 9px 22px; background: #eef0f7; width: 100%; }
 .chips { display: flex; gap: 6px; }
+.pair { display: flex; gap: 8px; width: 100%; }
+#legend .p2 { display: none; } body.two #legend .p2 { display: block; }
 .chips button { font-size: 14px; padding: 6px 14px; background: #eef0f7; }
 .chips button.on { background: var(--ink); color: #fff; }
 body.menu #hud, body.menu #touch { display: none; }
 body.practice #board .team, body.practice #board b, body.practice #board .dash { display: none; }
 body.practice #board::before { content: 'practice'; font-size: 18px; }
+.ov .card { touch-action: pan-y; }
+@media (max-height: 520px) {
+  .ov .card { padding: 12px 18px; gap: 6px; }
+  .ov h1 { font-size: 26px; } .ov h2 { font-size: 24px; }
+  .ov .sub { margin: -4px 0 0; font-size: 13px; }
+  .ov .help { display: none; }
+  .ov .big { font-size: 18px; padding: 8px 20px; }
+  .ov .mid { font-size: 15px; padding: 6px 16px; }
+  .chips button { padding: 4px 12px; }
+}

@@ -1,12 +1,11 @@
 import * as C from './constants';
 import { clamp, inCourt, landingPoint, planHit, solveLaunch } from './physics';
 import { rng } from './rng';
-import { NO_INPUT, type Avatar, type Ball, type Input, type Mode, type Phase, type Side, type SimEvent, type Vec } from './types';
+import { NO_INPUT, type Avatar, type Court, type Ball, type Input, type Mode, type Phase, type Side, type SimEvent, type Vec } from './types';
 
 const v3 = (x = 0, y = 0, z = 0): Vec => ({ x, y, z });
 const dist = (a: Vec, b: Vec) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 const approach = (v: number, to: number, d: number) => (v < to ? Math.min(v + d, to) : Math.max(v - d, to));
-export const home = (side: Side): Vec => v3(0, 0, side * 2.6);
 export const sideIdx = (s: Side) => (s === 1 ? 0 : 1);
 
 export interface WorldOpts { seed?: number; assist?: boolean; teams?: [number, number]; humans?: number[]; mode?: Mode }
@@ -35,12 +34,14 @@ export class World {
   events: SimEvent[] = [];
   rand: () => number;
   assist: boolean;
+  court: Court;
 
   constructor(o: WorldOpts = {}) {
     this.rand = rng(o.seed ?? 1);
     this.assist = o.assist ?? true;
     this.mode = o.mode ?? 'match';
     const [a, b] = o.teams ?? (this.mode === 'practice' ? [1, 0] : [1, 1]), humans = o.humans ?? [0];
+    this.court = C.COURTS[Math.max(a, b)] ?? C.COURTS[3];
     for (let i = 0; i < a; i++) this.addAvatar(1);
     for (let i = 0; i < b; i++) this.addAvatar(-1);
     for (const av of this.avatars) av.bot = !humans.includes(av.id);
@@ -57,8 +58,11 @@ export class World {
   }
 
   private addAvatar(side: Side) {
-    this.avatars.push({ id: this.avatars.length, side, bot: true, p: home(side), v: v3(), ground: true, yaw: side === 1 ? Math.PI : 0, charging: false, charge: 0, cool: 0, lastTouch: -9, pushArmed: false, prevJump: false, prevHit: false, swing: 0, landed: 0 });
+    this.avatars.push({ id: this.avatars.length, side, bot: true, p: this.home(side), v: v3(), ground: true, yaw: side === 1 ? Math.PI : 0, charging: false, charge: 0, cool: 0, lastTouch: -9, pushArmed: false, prevJump: false, prevHit: false, swing: 0, landed: 0 });
   }
+
+  /** Default spot for a side: mid-court, a bit behind the attack line. */
+  home(side: Side): Vec { return v3(0, 0, side * this.court.len * 0.52); }
 
   hand(a: Avatar): Vec {
     return v3(a.p.x + Math.sin(a.yaw) * 0.15, a.p.y + (a.ground ? C.HAND_Y : C.HAND_Y_AIR), a.p.z + Math.cos(a.yaw) * 0.15);
@@ -70,7 +74,7 @@ export class World {
     const team: Record<number, number> = { 1: 0, [-1]: 0 };
     for (const a of this.avatars) {
       const k = team[a.side]++, n = this.avatars.filter(o => o.side === a.side).length;
-      a.p = home(a.side); a.p.x = (k - (n - 1) / 2) * 1.6;
+      a.p = this.home(a.side); a.p.x = (k - (n - 1) / 2) * this.court.hw * 0.6;
       a.v = v3(); a.ground = true; a.charging = false; a.charge = 0; a.cool = 0; a.yaw = a.side === 1 ? Math.PI : 0;
     }
   }
@@ -79,7 +83,7 @@ export class World {
     this.phase = 'serve'; this.phaseT = 0; this.server = id; this.rally = 0;
     this.lineUp();
     const s = this.avatars[id];
-    s.p = v3(s.side * 0.4, 0, s.side * (C.LEN + 0.35));
+    s.p = v3(s.side * 0.4, 0, s.side * (this.court.len + 0.35));
     const b = this.ball;
     Object.assign(b, { held: true, live: true, v: v3(), spin: v3(), touches: 0, touchSide: s.side, lastSide: s.side, lastToucher: -1 });
     b.p = this.hand(s);
@@ -91,7 +95,7 @@ export class World {
     this.lineUp();
     const b = this.ball;
     Object.assign(b, { held: true, live: true, v: v3(), spin: v3(), touches: 0, touchSide: -1, lastSide: -1, lastToucher: -2 });
-    b.p = v3((this.rand() * 2 - 1) * (C.HW - 0.6), 2, -C.LEN + 0.4);
+    b.p = v3((this.rand() * 2 - 1) * (this.court.hw - 0.6), 2, -this.court.len + 0.4);
   }
 
   step(inputs: Input[]) {
@@ -100,7 +104,7 @@ export class World {
     const b = this.ball;
     if (this.phase === 'serve' && b.held && this.mode === 'practice') {
       if (this.phaseT >= C.SERVE_DELAY * 1.4) {
-        const tx = (this.rand() * 2 - 1) * (C.HW - 0.5), tz = 1.2 + this.rand() * (C.LEN - 2);
+        const tx = (this.rand() * 2 - 1) * (this.court.hw - 0.5), tz = 1.2 + this.rand() * (this.court.len - 2);
         b.held = false; b.v = solveLaunch(b.p, tx, tz, 1.5 + this.rand() * 0.3); this.phase = 'rally';
         b.spin = v3(this.rand() * 4 - 2, this.rand() * 4 - 2, this.rand() * 4 - 2);
         this.emit({ t: 'launch' });
@@ -139,10 +143,10 @@ export class World {
     a.v.x = approach(a.v.x, mx * sp, acc);
     a.v.z = approach(a.v.z, mz * sp, acc);
     if (inp.jump && !a.prevJump && a.ground) {
-      a.v.y = C.JUMP_V; a.ground = false; a.pushArmed = true;
+      a.v.y = C.JUMP_V; a.ground = false; a.pushArmed = !a.charging && !inp.hit; // jumping while charging = spike approach, no push
       this.emit({ t: 'jump', id: a.id });
     }
-    if (inp.hit && !a.prevHit && a.cool <= 0) { a.charging = true; a.charge = 0; }
+    if (inp.hit && !a.prevHit && a.cool <= 0) { a.charging = true; a.charge = 0; a.pushArmed = false; }
     if (a.charging) {
       if (inp.hit) a.charge = Math.min(1, a.charge + C.DT / C.CHARGE_T);
       else { this.release(a, mx, mz); a.charging = false; }
@@ -154,10 +158,10 @@ export class World {
       a.p.y = 0; a.v.y = 0; a.ground = true; a.landed = 0.18; a.pushArmed = false;
       this.emit({ t: 'land', id: a.id });
     }
-    a.p.x = clamp(a.p.x, -C.HW - 1.5, C.HW + 1.5);
+    a.p.x = clamp(a.p.x, -this.court.hw - 1.5, this.court.hw + 1.5);
     const zs = a.p.z * a.side;
     if (zs < C.NET_GAP) a.p.z = a.side * C.NET_GAP;
-    else if (zs > C.LEN + 2) a.p.z = a.side * (C.LEN + 2);
+    else if (zs > this.court.len + 2) a.p.z = a.side * (this.court.len + 2);
     const sv = Math.hypot(a.v.x, a.v.z);
     const fx = sv > 0.6 ? a.v.x : b.p.x - a.p.x, fz = sv > 0.6 ? a.v.z : b.p.z - a.p.z;
     if (Math.hypot(fx, fz) > 0.05) {
@@ -203,7 +207,7 @@ export class World {
       return;
     }
     const perfect = d < C.PERFECT_DIST;
-    const plan = planHit(b.p, a.side, charge, mx, -mz * a.side, this.openX(a.side), !a.ground, perfect);
+    const plan = planHit(b.p, a.side, charge, mx, -mz * a.side, this.openX(a.side), !a.ground, perfect, this.court);
     b.v = plan.v;
     b.spin = v3(-plan.v.z * 1.5, (this.rand() - 0.5) * 4, plan.v.x * 1.5);
     a.swing = 0.3;
@@ -215,7 +219,7 @@ export class World {
   private openX(side: Side) {
     const opp = this.avatars.filter(o => o.side !== side);
     let best = 0, bd = -1;
-    for (const x of [-C.HW * 0.75, 0, C.HW * 0.75]) {
+    for (const x of [-this.court.hw * 0.75, 0, this.court.hw * 0.75]) {
       const d = Math.min(...opp.map(o => Math.abs(o.p.x - x)), 99) + this.rand() * 0.5;
       if (d > bd) { bd = d; best = x; }
     }
@@ -237,7 +241,7 @@ export class World {
     const pz = b.p.z;
     b.v.y -= C.G_BALL * C.DT;
     b.p.x += b.v.x * C.DT; b.p.y += b.v.y * C.DT; b.p.z += b.v.z * C.DT;
-    if (pz !== 0 && Math.sign(pz) !== Math.sign(b.p.z) && Math.abs(b.p.x) <= C.HW + 0.4 && b.p.y < C.NET_H + C.BALL_R * 0.6) {
+    if (pz !== 0 && Math.sign(pz) !== Math.sign(b.p.z) && Math.abs(b.p.x) <= this.court.hw + 0.4 && b.p.y < C.NET_H + C.BALL_R * 0.6) {
       b.p.z = Math.sign(pz) * C.BALL_R; b.v.z = -b.v.z * 0.25; b.v.x *= 0.5;
       this.emit({ t: 'net', p: { ...b.p } });
     }
@@ -246,8 +250,8 @@ export class World {
       if (b.live && this.phase === 'rally') {
         if (b.lastToucher === -1) { this.startServe(this.server); return; } // dropped toss: toss again
         const landed: Side = b.p.z >= 0 ? 1 : -1;
-        if (this.mode === 'practice') this.drill(b.lastSide === 1 && landed === -1 && inCourt(b.p.x, b.p.z));
-        else if (inCourt(b.p.x, b.p.z)) this.point(-landed as Side, 'in');
+        if (this.mode === 'practice') this.drill(b.lastSide === 1 && landed === -1 && inCourt(b.p.x, b.p.z, this.court));
+        else if (inCourt(b.p.x, b.p.z, this.court)) this.point(-landed as Side, 'in');
         else this.point(-b.lastSide as Side, 'out');
       }
       if (Math.abs(b.v.y) > 1) this.emit({ t: 'bounce', p: { ...b.p }, v: Math.abs(b.v.y) });

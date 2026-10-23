@@ -1,5 +1,7 @@
 import { BALL_R, G_BALL, HW, LEN, NET_H } from './constants';
-import type { Side, Vec } from './types';
+import type { Court, Side, Vec } from './types';
+
+const DEF: Court = { hw: HW, len: LEN };
 
 export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 export const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
@@ -39,7 +41,7 @@ export function pointAtHeight(p: Vec, v: Vec, h: number): Vec | null {
   return { x: p.x + v.x * t, y: h, z: p.z + v.z * t };
 }
 
-export const inCourt = (x: number, z: number) => Math.abs(x) <= HW + BALL_R * 0.5 && Math.abs(z) <= LEN + BALL_R * 0.5;
+export const inCourt = (x: number, z: number, c: Court = DEF) => Math.abs(x) <= c.hw + BALL_R * 0.5 && Math.abs(z) <= c.len + BALL_R * 0.5;
 
 export interface HitPlan { v: Vec; spike: boolean; T: number; target: { x: number; z: number } }
 
@@ -48,12 +50,12 @@ export interface HitPlan { v: Vec; spike: boolean; T: number; target: { x: numbe
  * aimX ∈ [-1,1] picks the lane (0 = use openX), fwd ∈ [-1,1] > 0 means "short / tip", < 0 "deep".
  * Low charge = high slow lob, full charge = flat drive; airborne above the net with charge > 0.6 = spike.
  */
-export function planHit(from: Vec, side: Side, charge: number, aimX: number, fwd: number, openX: number, airborne: boolean, perfect: boolean): HitPlan {
-  const tx = clamp(Math.abs(aimX) > 0.2 ? aimX * HW * 0.85 : openX, -HW + 0.3, HW - 0.3);
-  let depth = lerp(1.4, LEN - 0.6, charge);
+export function planHit(from: Vec, side: Side, charge: number, aimX: number, fwd: number, openX: number, airborne: boolean, perfect: boolean, c: Court = DEF): HitPlan {
+  const tx = clamp(Math.abs(aimX) > 0.2 ? aimX * c.hw * 0.85 : openX, -c.hw + 0.3, c.hw - 0.3);
+  let depth = lerp(1.4, c.len - 0.6, charge);
   if (fwd > 0.3) depth *= 0.55;
   else if (fwd < -0.3) depth += 0.6;
-  depth = clamp(depth, 0.7, LEN - 0.3);
+  depth = clamp(depth, 0.7, c.len - 0.3);
   const tz = -side * depth;
   const spike = airborne && from.y > NET_H + 0.15 && Math.abs(from.z) < 2.8 && charge > 0.6;
   let T = spike ? lerp(0.62, 0.34, (charge - 0.6) / 0.4) : lerp(1.75, 0.8, charge);

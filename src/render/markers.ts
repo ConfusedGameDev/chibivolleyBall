@@ -64,13 +64,12 @@ export class Markers {
   private drop: THREE.Line;
   private ballShadow: THREE.Mesh;
   private shadows: THREE.Mesh[] = [];
-  private ring: THREE.Group;
-  private arc: THREE.Mesh;
-  private arcMat = new THREE.MeshBasicMaterial({ color: 0xff9a3c, transparent: true, depthWrite: false });
+  private rings: { g: THREE.Group; arc: THREE.Mesh; mat: THREE.MeshBasicMaterial }[] = [];
   private trail = new Trail();
   private t = 0;
 
-  constructor(n: number) {
+  /** n avatars; one ring + charge arc per entry of `ringColors` (one per human player). */
+  constructor(n: number, ringColors: number[] = [0x64a9e8]) {
     const blob = new THREE.MeshBasicMaterial({ map: blobTexture(), transparent: true, depthWrite: false });
     this.land = flat(new THREE.Mesh(new THREE.RingGeometry(0.2, 0.3, 40), this.landMat), 0.01);
     const inner = flat(new THREE.Mesh(new THREE.CircleGeometry(0.07, 20), this.landMat), 0);
@@ -80,15 +79,17 @@ export class Markers {
     this.drop.frustumCulled = false;
     this.ballShadow = flat(new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.6), blob), 0.006);
     for (let i = 0; i < n; i++) { const s = flat(new THREE.Mesh(new THREE.PlaneGeometry(0.85, 0.85), blob), 0.005); this.shadows.push(s); this.group.add(s); }
-    this.ring = new THREE.Group();
-    this.ring.add(flat(new THREE.Mesh(new THREE.RingGeometry(0.36, 0.42, 48), new THREE.MeshBasicMaterial({ color: 0x64a9e8, transparent: true, opacity: 0.85, depthWrite: false })), 0.008));
-    this.arc = flat(new THREE.Mesh(new THREE.RingGeometry(0.45, 0.54, 48, 1, Math.PI / 2, Math.PI * 2), this.arcMat), 0.009);
-    this.arc.scale.x = -1;
-    this.ring.add(this.arc);
-    this.group.add(this.land, this.drop, this.ballShadow, this.ring, this.trail.mesh);
+    for (const col of ringColors) {
+      const g = new THREE.Group(), mat = new THREE.MeshBasicMaterial({ color: 0xff9a3c, transparent: true, depthWrite: false });
+      g.add(flat(new THREE.Mesh(new THREE.RingGeometry(0.36, 0.42, 48), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.85, depthWrite: false })), 0.008));
+      const arc = flat(new THREE.Mesh(new THREE.RingGeometry(0.45, 0.54, 48, 1, Math.PI / 2, Math.PI * 2), mat), 0.009);
+      arc.scale.x = -1; g.add(arc);
+      this.rings.push({ g, arc, mat }); this.group.add(g);
+    }
+    this.group.add(this.land, this.drop, this.ballShadow, this.trail.mesh);
   }
 
-  update(w: World, me: Avatar, cam: THREE.Camera, dt: number) {
+  update(w: World, humans: Avatar[], cam: THREE.Camera, dt: number) {
     this.t += dt;
     const b = w.ball, live = b.live && !b.held && w.phase === 'rally';
     w.avatars.forEach((a, i) => {
@@ -110,11 +111,16 @@ export class Markers {
       pos.setXYZ(0, b.p.x, b.p.y - BALL_R, b.p.z); pos.setXYZ(1, b.p.x, 0.01, b.p.z); pos.needsUpdate = true;
       this.drop.computeLineDistances();
     }
-    this.ring.position.set(me.p.x, 0, me.p.z);
-    const c = me.charging ? me.charge : 0, seg = Math.round(c * 48);
-    this.arc.visible = seg > 0;
-    this.arc.geometry.setDrawRange(0, seg * 6);
-    this.arcMat.color.setHSL(0.08 + c * 0.22, 0.9, c >= 1 ? 0.5 + Math.sin(this.t * 30) * 0.15 : 0.55);
+    this.rings.forEach((r, i) => {
+      const me = humans[i];
+      r.g.visible = !!me;
+      if (!me) return;
+      r.g.position.set(me.p.x, 0, me.p.z);
+      const c = me.charging ? me.charge : 0, seg = Math.round(c * 48);
+      r.arc.visible = seg > 0;
+      r.arc.geometry.setDrawRange(0, seg * 6);
+      r.mat.color.setHSL(0.08 + c * 0.22, 0.9, c >= 1 ? 0.5 + Math.sin(this.t * 30) * 0.15 : 0.55);
+    });
     this.trail.update(new THREE.Vector3(b.p.x, b.p.y, b.p.z), !b.held && Math.hypot(b.v.x, b.v.y, b.v.z) > 2.5, new THREE.Color(TEAM[b.lastSide]), cam);
   }
 }

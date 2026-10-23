@@ -1,5 +1,6 @@
 export type Side = 1 | -1;
 export interface Vec { x: number; y: number; z: number }
+export interface Court { hw: number; len: number }
 
 /** One tick of input. mx/mz are world-space (x right, z toward the camera for side +1), length ≤ 1. */
 export interface Input { mx: number; mz: number; jump: boolean; hit: boolean }
