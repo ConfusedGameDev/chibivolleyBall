@@ -1,6 +1,7 @@
 import * as C from './constants';
 import { landingPoint, pointAtHeight } from './physics';
 import type { Avatar, Input, Vec } from './types';
+import { Rng } from './rng';
 import type { World } from './world';
 
 /** miss = chance per incoming ball of misreading where it comes down by `err` units; spike = chance to jump-attack a set ball. */
@@ -31,7 +32,12 @@ export class Bot {
   private action: 'push' | 'hit' | 'spike' = 'hit';
   private chase = false;
 
+  /** Bots draw from their own RNG, never the world's: a predicting client runs the world without bots and must stay in step. */
+  private rng: Rng;
+  private rand = () => this.rng.next();
+
   constructor(public id: number, private w: World, public level: BotLevel = LEVELS.normal) {
+    this.rng = new Rng((w.rng.s ^ Math.imul(id + 1, 0x9e3779b1)) >>> 0);
     this.target = w.home(w.avatars[id].side);
   }
 
@@ -56,12 +62,12 @@ export class Bot {
           if (b.lastToucher === -1) { this.off = { x: 0, z: 0 }; this.action = 'hit'; this.seen = -1; } // own serve toss: always read it right
           else if (this.seen !== w.contacts) {
             this.seen = w.contacts;
-            const r = w.rand() < this.level.miss ? this.level.err : 0, ang = w.rand() * Math.PI * 2;
+            const r = this.rand() < this.level.miss ? this.level.err : 0, ang = this.rand() * Math.PI * 2;
             this.off = { x: Math.cos(ang) * r, z: Math.sin(ang) * r };
             const nearNet = Math.abs(L.z) < 2.4, high = b.p.y > 2.6 || b.v.y > 2;
             this.action = team.length > 1 && ours < 2 && b.lastSide === side ? 'push'
               : team.length > 1 && ours === 0 ? 'push'
-              : nearNet && high && ours > 0 && w.rand() < this.level.spike ? 'spike' : 'hit';
+              : nearNet && high && ours > 0 && this.rand() < this.level.spike ? 'spike' : 'hit';
           }
           const h = this.action === 'push' ? (ours === 0 ? DIG_H : PUSH_H) : this.action === 'spike' ? SPIKE_H : C.HAND_Y + 0.15;
           const P = pointAtHeight(b.p, b.v, h) ?? L;
@@ -93,8 +99,8 @@ export class Bot {
     if (!a.charging) {
       if ((hd < 2.4 || (this.action === 'spike' && hd < 4.5)) && b.v.y < 1 && a.cool <= 0 && (serving || landingPoint(b.p, b.v).z * side > 0)) {
         out.hit = true;
-        this.want = this.action === 'spike' ? 0.9 : this.level.minCharge + w.rand() * (this.level.maxCharge - this.level.minCharge);
-        this.aim = (w.rand() * 2 - 1) * this.level.lane;
+        this.want = this.action === 'spike' ? 0.9 : this.level.minCharge + this.rand() * (this.level.maxCharge - this.level.minCharge);
+        this.aim = (this.rand() * 2 - 1) * this.level.lane;
       }
     } else {
       const ready = hd <= C.REACH_HIT + C.BALL_R - 0.05 && (a.charge >= this.want || b.p.y < C.HAND_Y || (!a.ground && a.v.y < 0));

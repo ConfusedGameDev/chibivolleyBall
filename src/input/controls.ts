@@ -16,7 +16,7 @@ export class Controls {
 
   constructor(canvas: HTMLCanvasElement, ui: { zone: HTMLElement; knob: HTMLElement; base: HTMLElement; jump: HTMLElement; hit: HTMLElement }) {
     addEventListener('keydown', e => {
-      if (e.repeat) return;
+      if (e.repeat || e.target instanceof HTMLInputElement) return;
       this.keys.add(e.code); this.onAny();
       if (e.code === 'KeyC') this.onCamera();
       if (e.code === 'KeyP') this.onAssist();

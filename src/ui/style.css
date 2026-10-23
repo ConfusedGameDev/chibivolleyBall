@@ -69,3 +69,17 @@ body.practice #board::before { content: 'practice'; font-size: 18px; }
   .ov .mid { font-size: 15px; padding: 6px 16px; }
   .chips button { padding: 4px 12px; }
 }
+.ov input { font: inherit; font-size: 17px; padding: 8px 12px; border-radius: 12px; border: 2px solid #dde0ec; width: 100%; text-align: center; }
+.ov input#code { text-transform: uppercase; letter-spacing: 4px; }
+.teams { display: flex; gap: 10px; width: 100%; }
+.tcol { flex: 1; background: #f4f5fa; border-radius: 12px; padding: 8px; }
+.tcol b { color: #fff; border-radius: 8px; padding: 2px 10px; font-size: 13px; }
+.tcol ul { list-style: none; margin: 6px 0 0; padding: 0; font-size: 15px; line-height: 1.6; }
+.tcol li.cpu { opacity: .4; } .tcol li.me { font-weight: 700; } .tcol li.off { opacity: .5; text-decoration: line-through; }
+#lsize button:disabled { opacity: .5; }
+#bStart:disabled { background: #b9c2d6; }
+body.online .local { display: none; }
+#ping { position: absolute; top: calc(92px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); font-size: 11px; opacity: .45; }
+#tags > div { position: absolute; left: 0; top: 0; font-size: 12px; font-weight: 600; padding: 1px 7px; border-radius: 8px; background: rgba(255,255,255,.85); white-space: nowrap; }
+#toast { position: absolute; left: 50%; bottom: 18%; transform: translateX(-50%); background: var(--ink); color: #fff; border-radius: 12px; padding: 6px 14px; font-size: 15px; opacity: 0; transition: opacity .3s; }
+#toast.on { opacity: .9; }
