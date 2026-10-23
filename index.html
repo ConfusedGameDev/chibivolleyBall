@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#eef0f7" />
+  <title>Chibi Volley</title>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="fx"></div>
+  <div id="hud">
+    <div id="board">
+      <span class="team home">you</span><b id="s0">0</b><span class="dash">—</span><b id="s1">0</b><span class="team away">cpu</span>
+      <div id="dots"><i></i><i></i><i></i></div>
+    </div>
+    <div id="rally">rally 0 · best 0</div>
+    <div id="bubble">x2</div>
+    <div id="btns">
+      <button id="bCam" title="Camera (C)">cam</button>
+      <button id="bAssist" title="Assist (P)">assist on</button>
+      <button id="bMute" title="Sound">sound</button>
+    </div>
+    <div id="legend">
+      <div><kbd>WASD</kbd> move</div>
+      <div><kbd>Space</kbd> jump / push</div>
+      <div><kbd>J</kbd> or <kbd>click</kbd> hold to charge, release to hit</div>
+      <div><kbd>C</kbd> camera · <kbd>P</kbd> assist</div>
+    </div>
+  </div>
+  <div id="touch">
+    <div id="zone"></div>
+    <div id="base"></div><div id="knob"></div>
+    <div id="bJump" class="tbtn">jump</div>
+    <div id="bHit" class="tbtn">hit</div>
+  </div>
+  <div id="start">
+    <div class="card">
+      <h1>Chibi Volley</h1>
+      <p class="sub">M0 feel prototype · 1v1 vs CPU</p>
+      <p><b>Jump</b> near the ball to push it up. <b>Hold hit</b> to charge, <b>release</b> when the ball is at your hands to send it over. More charge = faster and deeper; charge it in the air near the net to spike.</p>
+      <p class="go">Tap or press any key</p>
+    </div>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
