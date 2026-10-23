@@ -40,11 +40,20 @@ body.touch #legend { display: none; }
 .tbtn.down { background: #fff; scale: .92; }
 #bJump { width: 78px; height: 78px; right: calc(150px + env(safe-area-inset-right)); bottom: calc(26px + env(safe-area-inset-bottom)); }
 #bHit { width: 104px; height: 104px; right: calc(28px + env(safe-area-inset-right)); bottom: calc(70px + env(safe-area-inset-bottom)); background: rgba(255,186,120,.6); }
-#start { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(238,240,247,.6); }
-#start.hide { display: none; }
-#start .card { background: #fff; border-radius: 22px; padding: 22px 26px; max-width: min(460px, 90vw); box-shadow: 0 4px 0 rgba(43,38,56,.12); text-align: center; }
-#start h1 { margin: 0; font-size: 40px; }
-#start .sub { margin: 2px 0 12px; opacity: .55; }
-#start p { line-height: 1.45; }
-#start .go { font-weight: 600; color: var(--home); animation: pulse 1.2s infinite; }
-@keyframes pulse { 50% { opacity: .4; } }
+.ov { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(238,240,247,.45); pointer-events: auto; }
+.ov.hide { display: none; }
+.ov .card { background: #fff; border-radius: 22px; padding: 22px 26px; width: min(440px, 90vw); max-height: 92vh; overflow: auto; box-shadow: 0 4px 0 rgba(43,38,56,.12);
+  text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.ov h1 { margin: 0; font-size: 40px; } .ov h2 { margin: 0; font-size: 32px; }
+.ov .sub { margin: -6px 0 4px; opacity: .55; }
+.ov .help { line-height: 1.45; font-size: 14px; opacity: .8; margin: 4px 0 0; }
+.ov button { font: inherit; font-weight: 600; border: 0; border-radius: 14px; cursor: pointer; color: var(--ink); box-shadow: 0 3px 0 rgba(43,38,56,.15); }
+.ov button:active { translate: 0 2px; box-shadow: 0 1px 0 rgba(43,38,56,.15); }
+.ov .big { font-size: 22px; padding: 12px 28px; background: var(--home); color: #fff; width: 100%; }
+.ov .mid { font-size: 17px; padding: 9px 22px; background: #eef0f7; width: 100%; }
+.chips { display: flex; gap: 6px; }
+.chips button { font-size: 14px; padding: 6px 14px; background: #eef0f7; }
+.chips button.on { background: var(--ink); color: #fff; }
+body.menu #hud, body.menu #touch { display: none; }
+body.practice #board .team, body.practice #board b, body.practice #board .dash { display: none; }
+body.practice #board::before { content: 'practice'; font-size: 18px; }

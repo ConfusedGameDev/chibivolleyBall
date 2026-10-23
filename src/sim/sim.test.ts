@@ -41,19 +41,20 @@ describe('hit solver', () => {
 describe('world', () => {
   const run = (seed: number, seconds: number) => {
     const w = new World({ seed, humans: [] }), bots = w.avatars.map(a => new Bot(a.id, w));
-    for (let i = 0; i < seconds * 60; i++) { w.step(bots.map(b => b.input())); w.events.length = 0; }
-    return w;
+    let points = 0;
+    for (let i = 0; i < seconds * 60; i++) { w.step(bots.map(b => b.input())); points += w.events.filter(e => e.t === 'point').length; w.events.length = 0; }
+    return Object.assign(w, { points });
   };
 
   it('two bots play points and the state stays finite', () => {
     const w = run(7, 180);
-    expect(w.score[0] + w.score[1]).toBeGreaterThan(5);
+    expect(w.points).toBeGreaterThan(5);
     expect(w.best).toBeGreaterThanOrEqual(3);
     for (const v of [w.ball.p, ...w.avatars.map(a => a.p)]) expect(Number.isFinite(v.x + v.y + v.z)).toBe(true);
   });
 
   it('is deterministic for a seed', () => {
-    expect(run(3, 60).score).toEqual(run(3, 60).score);
+    expect([run(3, 90).score, run(3, 90).points]).toEqual([run(3, 90).score, run(3, 90).points]);
   });
 
   it('a fourth touch gives the point away', () => {
@@ -71,5 +72,68 @@ describe('world', () => {
     }
     expect(w.ball.touches).toBe(4);
     expect(w.score).toEqual([0, 1]);
+  });
+});
+
+describe('sets and match', () => {
+  const settle = (w: World) => { for (let i = 0; i < 400 && w.phase === 'dead'; i++) w.step([]); };
+  const win = (w: World, side: 1 | -1, n: number) => { for (let k = 0; k < n; k++) { w.point(side, 'in'); settle(w); } };
+
+  it('a set needs 7 and a 2-point lead, capped at 11', () => {
+    const w = new World({ seed: 1, humans: [] });
+    win(w, 1, 6); win(w, -1, 6);
+    win(w, 1, 1);
+    expect(w.sets).toEqual([0, 0]); // 7-6 is not enough
+    win(w, -1, 1); win(w, 1, 1); win(w, -1, 1); // 8-8
+    win(w, 1, 1); win(w, -1, 1); // 9-9
+    win(w, 1, 1); win(w, -1, 1); // 10-10
+    win(w, -1, 1); // 10-11: cap
+    expect(w.sets).toEqual([0, 1]);
+    expect(w.score).toEqual([0, 0]);
+    expect(w.setNo).toBe(2);
+  });
+
+  it('the team that lost the set serves the next one', () => {
+    const w = new World({ seed: 1, humans: [] });
+    win(w, 1, 7);
+    expect(w.avatars[w.server].side).toBe(-1);
+  });
+
+  it('best of three ends the match', () => {
+    const w = new World({ seed: 1, humans: [] });
+    win(w, -1, 7); win(w, -1, 7);
+    expect(w.phase).toBe('over');
+    expect(w.winner).toBe(-1);
+    expect(w.sets).toEqual([0, 2]);
+    w.restart();
+    expect([w.phase, w.sets, w.score, w.winner]).toEqual(['serve', [0, 0], [0, 0], 0]);
+  });
+});
+
+describe('practice', () => {
+  it('the launcher lobs balls that land on the player side', () => {
+    const w = new World({ seed: 5, mode: 'practice' });
+    expect(w.avatars.length).toBe(1);
+    const fails: boolean[] = [];
+    for (let i = 0; i < 60 * 30; i++) { w.step([]); for (const e of w.events) if (e.t === 'drill') fails.push(e.ok); w.events.length = 0; }
+    expect(fails.length).toBeGreaterThan(5);
+    expect(fails.every(ok => !ok)).toBe(true); // nobody returns them, so every launch is a miss
+    expect(w.score).toEqual([0, 0]);
+  });
+
+  it('a clean return counts toward the streak', () => {
+    const w = new World({ seed: 5, mode: 'practice' });
+    for (let i = 0; i < 200 && w.phase !== 'rally'; i++) w.step([]);
+    const a = w.avatars[0], b = w.ball;
+    b.p = { x: 0, y: 1.1, z: 2 }; b.v = { x: 0, y: 0, z: 0 };
+    a.p = { x: 0, y: 0, z: 2.2 }; a.yaw = Math.PI;
+    w.step([{ mx: 0, mz: 0, jump: false, hit: true }]);
+    for (let i = 0; i < 20; i++) w.step([{ mx: 0, mz: 0, jump: false, hit: true }]);
+    b.p = { ...w.hand(a) }; b.v = { x: 0, y: 0, z: 0 };
+    w.step([{ mx: 0, mz: 0, jump: false, hit: false }]);
+    let ok: boolean | null = null;
+    for (let i = 0; i < 400 && ok === null; i++) { w.step([]); for (const e of w.events) if (e.t === 'drill') ok = e.ok; w.events.length = 0; }
+    expect(ok).toBe(true);
+    expect(w.streak).toBe(1);
   });
 });

@@ -36,7 +36,8 @@ export interface Ball {
   lastToucher: number;
 }
 
-export type Phase = 'serve' | 'rally' | 'dead';
+export type Phase = 'serve' | 'rally' | 'dead' | 'over';
+export type Mode = 'match' | 'practice';
 
 export type SimEvent =
   | { t: 'push'; id: number; p: Vec }
@@ -49,4 +50,8 @@ export type SimEvent =
   | { t: 'bounce'; p: Vec; v: number }
   | { t: 'toss'; id: number }
   | { t: 'point'; side: Side; why: 'in' | 'out' | 'touches' | 'net' }
-  | { t: 'touch'; side: Side; n: number };
+  | { t: 'touch'; side: Side; n: number }
+  | { t: 'set'; side: Side; sets: [number, number] }
+  | { t: 'match'; side: Side }
+  | { t: 'launch' }
+  | { t: 'drill'; ok: boolean; streak: number };

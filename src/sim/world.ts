@@ -1,7 +1,7 @@
 import * as C from './constants';
-import { clamp, inCourt, landingPoint, planHit } from './physics';
+import { clamp, inCourt, landingPoint, planHit, solveLaunch } from './physics';
 import { rng } from './rng';
-import { NO_INPUT, type Avatar, type Ball, type Input, type Phase, type Side, type SimEvent, type Vec } from './types';
+import { NO_INPUT, type Avatar, type Ball, type Input, type Mode, type Phase, type Side, type SimEvent, type Vec } from './types';
 
 const v3 = (x = 0, y = 0, z = 0): Vec => ({ x, y, z });
 const dist = (a: Vec, b: Vec) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
@@ -9,7 +9,7 @@ const approach = (v: number, to: number, d: number) => (v < to ? Math.min(v + d,
 export const home = (side: Side): Vec => v3(0, 0, side * 2.6);
 export const sideIdx = (s: Side) => (s === 1 ? 0 : 1);
 
-export interface WorldOpts { seed?: number; assist?: boolean; teams?: [number, number]; humans?: number[] }
+export interface WorldOpts { seed?: number; assist?: boolean; teams?: [number, number]; humans?: number[]; mode?: Mode }
 
 /** Pure match simulation: no DOM, no Three.js. Same code will run on the client, in bots and on the server. */
 export class World {
@@ -25,6 +25,13 @@ export class World {
   rally = 0; // contacts this rally
   contacts = 0; // all contacts this match (never resets)
   best = 0; // longest rally
+  mode: Mode;
+  sets: [number, number] = [0, 0];
+  setNo = 1;
+  winner: Side | 0 = 0;
+  private setBreak = false;
+  streak = 0; // practice: clean returns in a row
+  bestStreak = 0;
   events: SimEvent[] = [];
   rand: () => number;
   assist: boolean;
@@ -32,12 +39,21 @@ export class World {
   constructor(o: WorldOpts = {}) {
     this.rand = rng(o.seed ?? 1);
     this.assist = o.assist ?? true;
-    const [a, b] = o.teams ?? [1, 1], humans = o.humans ?? [0];
+    this.mode = o.mode ?? 'match';
+    const [a, b] = o.teams ?? (this.mode === 'practice' ? [1, 0] : [1, 1]), humans = o.humans ?? [0];
     for (let i = 0; i < a; i++) this.addAvatar(1);
     for (let i = 0; i < b; i++) this.addAvatar(-1);
     for (const av of this.avatars) av.bot = !humans.includes(av.id);
     this.ball = { p: v3(), v: v3(), spin: v3(), live: false, held: true, lastSide: 1, touchSide: 1, touches: 0, lastToucher: -1 };
-    this.startServe(0);
+    this.restart();
+  }
+
+  /** New match (or a fresh practice run) with the same players. */
+  restart() {
+    this.score = [0, 0]; this.sets = [0, 0]; this.setNo = 1; this.winner = 0; this.setBreak = false;
+    this.best = 0; this.streak = 0; this.serveIdx = [0, 0];
+    this.events.length = 0;
+    if (this.mode === 'practice') this.startLaunch(); else this.startServe(0);
   }
 
   private addAvatar(side: Side) {
@@ -50,14 +66,18 @@ export class World {
 
   private emit(e: SimEvent) { this.events.push(e); }
 
-  startServe(id: number) {
-    this.phase = 'serve'; this.phaseT = 0; this.server = id; this.rally = 0;
+  private lineUp() {
     const team: Record<number, number> = { 1: 0, [-1]: 0 };
     for (const a of this.avatars) {
       const k = team[a.side]++, n = this.avatars.filter(o => o.side === a.side).length;
       a.p = home(a.side); a.p.x = (k - (n - 1) / 2) * 1.6;
       a.v = v3(); a.ground = true; a.charging = false; a.charge = 0; a.cool = 0; a.yaw = a.side === 1 ? Math.PI : 0;
     }
+  }
+
+  startServe(id: number) {
+    this.phase = 'serve'; this.phaseT = 0; this.server = id; this.rally = 0;
+    this.lineUp();
     const s = this.avatars[id];
     s.p = v3(s.side * 0.4, 0, s.side * (C.LEN + 0.35));
     const b = this.ball;
@@ -65,11 +85,27 @@ export class World {
     b.p = this.hand(s);
   }
 
+  /** Practice: a launcher on the far side lobs balls into the player's court. */
+  startLaunch() {
+    this.phase = 'serve'; this.phaseT = 0; this.rally = 0; this.server = -1;
+    this.lineUp();
+    const b = this.ball;
+    Object.assign(b, { held: true, live: true, v: v3(), spin: v3(), touches: 0, touchSide: -1, lastSide: -1, lastToucher: -2 });
+    b.p = v3((this.rand() * 2 - 1) * (C.HW - 0.6), 2, -C.LEN + 0.4);
+  }
+
   step(inputs: Input[]) {
     this.t += C.DT; this.phaseT += C.DT;
     for (const a of this.avatars) this.stepAvatar(a, inputs[a.id] ?? NO_INPUT);
     const b = this.ball;
-    if (this.phase === 'serve' && b.held) {
+    if (this.phase === 'serve' && b.held && this.mode === 'practice') {
+      if (this.phaseT >= C.SERVE_DELAY * 1.4) {
+        const tx = (this.rand() * 2 - 1) * (C.HW - 0.5), tz = 1.2 + this.rand() * (C.LEN - 2);
+        b.held = false; b.v = solveLaunch(b.p, tx, tz, 1.5 + this.rand() * 0.3); this.phase = 'rally';
+        b.spin = v3(this.rand() * 4 - 2, this.rand() * 4 - 2, this.rand() * 4 - 2);
+        this.emit({ t: 'launch' });
+      }
+    } else if (this.phase === 'serve' && b.held) {
       const s = this.avatars[this.server], h = this.hand(s);
       b.p = v3(h.x, h.y + 0.1, h.z - s.side * 0.2);
       if (this.phaseT >= C.SERVE_DELAY) {
@@ -78,7 +114,13 @@ export class World {
       }
     }
     this.stepBall();
-    if (this.phase === 'dead' && this.phaseT >= C.DEAD_TIME) this.startServe(this.nextServer);
+    if (this.phase === 'dead' && this.phaseT >= (this.setBreak ? C.SET_BREAK : C.DEAD_TIME)) {
+      if (this.mode === 'practice') this.startLaunch();
+      else {
+        if (this.setBreak) { this.setBreak = false; this.score = [0, 0]; this.setNo++; }
+        this.startServe(this.nextServer);
+      }
+    }
   }
 
   private stepAvatar(a: Avatar, inp: Input) {
@@ -204,7 +246,8 @@ export class World {
       if (b.live && this.phase === 'rally') {
         if (b.lastToucher === -1) { this.startServe(this.server); return; } // dropped toss: toss again
         const landed: Side = b.p.z >= 0 ? 1 : -1;
-        if (inCourt(b.p.x, b.p.z)) this.point(-landed as Side, 'in');
+        if (this.mode === 'practice') this.drill(b.lastSide === 1 && landed === -1 && inCourt(b.p.x, b.p.z));
+        else if (inCourt(b.p.x, b.p.z)) this.point(-landed as Side, 'in');
         else this.point(-b.lastSide as Side, 'out');
       }
       if (Math.abs(b.v.y) > 1) this.emit({ t: 'bounce', p: { ...b.p }, v: Math.abs(b.v.y) });
@@ -213,12 +256,28 @@ export class World {
     }
   }
 
-  private point(side: Side, why: 'in' | 'out' | 'touches' | 'net') {
+  private drill(ok: boolean) {
     if (this.phase === 'dead') return;
-    const i = sideIdx(side);
-    this.score[i]++; this.phase = 'dead'; this.phaseT = 0; this.ball.live = false;
-    const team = this.avatars.filter(a => a.side === side);
-    this.nextServer = team[this.serveIdx[i]++ % team.length].id;
+    this.streak = ok ? this.streak + 1 : 0; this.bestStreak = Math.max(this.bestStreak, this.streak);
+    this.phase = 'dead'; this.phaseT = 0; this.ball.live = false;
+    this.emit({ t: 'drill', ok, streak: this.streak });
+  }
+
+  /** Award a rally to `side`: sets to SET_TO, win by WIN_BY, hard cap SET_CAP, best of BEST_OF. */
+  point(side: Side, why: 'in' | 'out' | 'touches' | 'net') {
+    if (this.mode === 'practice') return this.drill(false);
+    if (this.phase === 'dead' || this.phase === 'over') return;
+    const i = sideIdx(side), s = ++this.score[i], o = this.score[1 - i];
+    this.phase = 'dead'; this.phaseT = 0; this.ball.live = false;
     this.emit({ t: 'point', side, why });
+    let serving = side;
+    if ((s >= C.SET_TO && s - o >= C.WIN_BY) || s >= C.SET_CAP) {
+      this.sets[i]++;
+      this.emit({ t: 'set', side, sets: [...this.sets] });
+      if (this.sets[i] > C.BEST_OF / 2) { this.winner = side; this.phase = 'over'; this.emit({ t: 'match', side }); return; }
+      this.setBreak = true; serving = -side as Side; // the team that lost the set serves first
+    }
+    const team = this.avatars.filter(a => a.side === serving), k = sideIdx(serving);
+    this.nextServer = team[this.serveIdx[k]++ % team.length].id;
   }
 }
