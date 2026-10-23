@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { HW, LEN, NET_H } from '../sim/constants';
+import { NET_H } from '../sim/constants';
+import type { Court } from '../sim/types';
 import { outline, toon } from './toon';
 
 function netTexture() {
@@ -14,7 +15,7 @@ function netTexture() {
   return t;
 }
 
-export function buildCourt() {
+export function buildCourt({ hw: HW, len: LEN }: Court) {
   const g = new THREE.Group();
   const ground = new THREE.Mesh(new THREE.CircleGeometry(60, 48), new THREE.MeshLambertMaterial({ color: 0xf2f3f8 }));
   ground.rotation.x = -Math.PI / 2;

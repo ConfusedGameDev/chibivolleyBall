@@ -1,7 +1,9 @@
 // All units: avatar height ≈ 1. Net at z = 0; side +1 is z > 0 (the local player in solo), side -1 is z < 0.
 export const DT = 1 / 60;
-export const HW = 2.5; // court half-width (x)
-export const LEN = 5; // court depth per side (z)
+export const HW = 2.5; // 1v1 court half-width (x)
+export const LEN = 5; // 1v1 court depth per side (z)
+/** Court size per players-per-side; bigger teams get more room. */
+export const COURTS: Record<number, { hw: number; len: number }> = { 1: { hw: HW, len: LEN }, 2: { hw: 3, len: 5.8 }, 3: { hw: 3.6, len: 6.4 } };
 export const NET_H = 1.6; // net top
 export const NET_GAP = 0.3; // avatars keep this far from the centre line
 export const BALL_R = 0.24;

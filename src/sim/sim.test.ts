@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Bot } from './bot';
 import * as C from './constants';
 import { clearsNet, landingPoint, planHit, solveLaunch } from './physics';
+import { pickControl } from './team';
 import { World } from './world';
 
 describe('hit solver', () => {
@@ -135,5 +136,50 @@ describe('practice', () => {
     for (let i = 0; i < 400 && ok === null; i++) { w.step([]); for (const e of w.events) if (e.t === 'drill') ok = e.ok; w.events.length = 0; }
     expect(ok).toBe(true);
     expect(w.streak).toBe(1);
+  });
+});
+
+describe('teams', () => {
+  const play = (n: number, seed: number, secs: number) => {
+    const w = new World({ seed, humans: [], teams: [n, n] }), bots = w.avatars.map(a => new Bot(a.id, w)), c: Record<string, number> = {};
+    for (let i = 0; i < secs * 60; i++) {
+      w.step(bots.map(b => b.input()));
+      for (const e of w.events) { c[e.t] = (c[e.t] ?? 0) + 1; if (e.t === 'hit' && e.spike) c.spike = (c.spike ?? 0) + 1; if (e.t === 'point' && e.why === 'touches') c.fault = (c.fault ?? 0) + 1; }
+      w.events.length = 0; if (w.phase === 'over') w.restart();
+    }
+    return c;
+  };
+
+  it('bigger teams get a bigger court', () => {
+    expect(new World({ teams: [3, 3] }).court.hw).toBeGreaterThan(new World({ teams: [1, 1] }).court.hw);
+  });
+
+  for (const n of [2, 3]) it(`${n}v${n} bots dig, set and spike`, () => {
+    const c = play(n, 1, 240);
+    expect(c.point).toBeGreaterThan(10);
+    expect(c.push).toBeGreaterThan(c.point); // teams use their touches
+    expect(c.spike ?? 0).toBeGreaterThan(3);
+    expect((c.fault ?? 0) / c.point).toBeLessThan(0.15);
+  });
+
+  it('jumping while charging is a spike approach, not a push', () => {
+    const w = new World({ seed: 1, humans: [0, 1] });
+    w.phase = 'rally'; Object.assign(w.ball, { held: false, live: true, lastToucher: 1, lastSide: -1, touchSide: -1, touches: 1 });
+    const a = w.avatars[0]; a.p = { x: 0, y: 0, z: 2 };
+    const idle = { mx: 0, mz: 0, jump: false, hit: false };
+    w.step([{ mx: 0, mz: 0, jump: false, hit: true }, idle]);
+    w.ball.p = { x: 0, y: 2.1, z: 2.1 }; w.ball.v = { x: 0, y: 0, z: 0 };
+    w.step([{ mx: 0, mz: 0, jump: true, hit: true }, idle]);
+    for (let i = 0; i < 10; i++) { w.ball.v = { x: 0, y: 0, z: 0 }; w.step([{ mx: 0, mz: 0, jump: false, hit: true }, idle]); }
+    expect(w.events.some(e => e.t === 'push')).toBe(false);
+  });
+
+  it('auto-switch hands control to the teammate under the ball', () => {
+    const w = new World({ seed: 1, humans: [0], teams: [2, 1] });
+    w.phase = 'rally'; Object.assign(w.ball, { held: false, live: true, lastToucher: 2, lastSide: -1 });
+    w.avatars[0].p = { x: -2, y: 0, z: 4 }; w.avatars[1].p = { x: 2, y: 0, z: 2 };
+    w.ball.p = { x: 2, y: 3, z: 1 }; w.ball.v = { x: 0, y: 0, z: 1 };
+    expect(pickControl(w, w.avatars[0], new Set()).id).toBe(1);
+    expect(pickControl(w, w.avatars[0], new Set([1])).id).toBe(0);
   });
 });
